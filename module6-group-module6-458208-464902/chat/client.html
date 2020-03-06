@@ -1,0 +1,306 @@
+ <!DOCTYPE html>
+ <html>
+    <head>
+       <script src="/socket.io/socket.io.js"></script>
+       <title> ChatRoom </title>
+    </head>
+    <body>
+       <div id = "mainSection"></div>
+    </body>
+    <script type ="text/javascript">
+ 
+       var socketio = io.connect();
+       let username;
+       // Sorry for the vulgar language. It is for our creative portion
+       let badWordMap = {'fuck':'f$*&', 'shit':'s#*^'}
+ 
+       socketio.on("message_to_client",function(data) {
+          //Append an HR thematic break and the escaped HTML of the new message
+          document.getElementById("chat").appendChild(document.createElement("hr"));
+          document.getElementById("chat").appendChild(document.createTextNode(data['message']));
+       });
+ 
+       // function to render chat and its html elements 
+       socketio.on('render_chat', function(data) {
+          clear();
+ 
+          let chatName = document.createElement("h2");
+          chatName.id = "chatName";
+          document.getElementById("mainSection").appendChild(chatName);
+ 
+          let chat = document.createElement("div");
+          chat.id = "chat";
+          document.getElementById("mainSection").appendChild(chat);
+ 
+          let send = document.createElement("div");
+          send.id = "send";
+          document.getElementById("mainSection").appendChild(send);
+ 
+          let input = document.createElement("input");
+          input.type="text";
+          input.id="message_input";
+          document.getElementById("send").appendChild(input);
+
+           input.addEventListener("focus", function(event){
+               focus();
+           });
+
+           //let inp = document.createElement("div");
+           //inp.innerHTML = '<input type="text" id="message_input" onfocus="focus()" />';
+           //document.getElementById("send").appendChild(inp);
+ 
+          let btn = document.createElement("div");
+          btn.innerHTML = '<button id="send" onclick="sendMessage()" onfocus="focus()">Send</button>';
+          document.getElementById("send").appendChild(btn);
+ 
+          document.getElementById("mainSection").appendChild(document.createElement("hr"));
+ 
+          let roomUsers = document.createElement("div");
+          let h = document.createElement("h4");
+          h.innerHTML = "Online Users";
+          roomUsers.id = "roomUsers";
+          roomUsers.appendChild(h);
+          document.getElementById("mainSection").appendChild(roomUsers);
+          
+ 
+          document.getElementById("mainSection").appendChild(document.createElement("hr"));
+ 
+          // list of other rooms
+          let rooms = document.createElement("div");
+          rooms.id = "rooms";
+          let h1 = document.createElement("h4");
+          h1.innerHTML = "Available Rooms";
+          document.getElementById("mainSection").appendChild(rooms);
+          document.getElementById("rooms").appendChild(h1);
+         
+          // create new room button
+          let createRoomHeader = document.createElement("h4");
+          createRoomHeader.innerHTML = "Create New Room";
+          let createRoom = document.createElement("div");
+          createRoom.id = "createRoom"
+          let roomName = document.createElement("input");
+          roomName.type = "text";
+          let roomPW = document.createElement("input");
+          roomPW.type = "password";
+          roomPW.setAttribute("placeholder", "Password (none = public)");
+          let roomSub = document.createElement("button");
+          roomSub.innerHTML = "Create New Room";
+         
+          document.getElementById("mainSection").appendChild(createRoom);
+ 
+          createRoom.appendChild(createRoomHeader);
+          createRoom.appendChild(roomName);
+          createRoom.appendChild(roomPW);
+          createRoom.appendChild(roomSub);
+ 
+          roomSub.addEventListener("click",function(event){
+             let rname = roomName.value;
+             let rPW = roomPW.value;
+             socketio.emit("create_new_room", {rN: rname, rPW: rPW, creator: un});
+          });
+ 
+          document.getElementById("chatName").innerHTML = data.room;
+          var p = document.createElement('p');
+          var node = document.createTextNode(data.message);
+          p.appendChild(node);
+          document.getElementById("chat").appendChild(p);
+       });
+ 
+       // function to place the other rooms under the chat 
+       socketio.on("render_rooms", function(data){
+          let container = document.getElementById("rooms");
+          //keep looping while the firstChild element is not null
+          while (container.firstChild){
+             //remove the firstChild element
+             container.removeChild(container.firstChild);
+          }
+          //take in list of rooms
+          let h1 = document.createElement("h4");
+          h1.innerHTML = "Available Rooms";
+          document.getElementById("rooms").appendChild(h1);
+          for(let i=0; i<data.length; i++) {
+             let cont = document.createElement('div');
+             let p = document.createElement('p');
+             let node = document.createTextNode(data[i]);
+             p.appendChild(node);
+             let button = document.createElement('input');
+             button.type = "submit";
+             button.value = "Join";
+             cont.appendChild(p);
+             cont.appendChild(button);
+             document.getElementById("rooms").appendChild(cont);
+             button.addEventListener("click",function(event){
+             socketio.emit('join_room', data[i], username, null);
+             });
+          }
+       });
+
+       // function to show other users in the current room 
+       socketio.on("render_users", function(userMap, creator){
+         let c = document.getElementById("roomUsers");
+           while (c.firstChild){
+               c.removeChild(c.firstChild);
+           }
+           
+         let h = document.createElement("h4");
+          h.innerHTML = "Online Users";
+          roomUsers.appendChild(h);
+         for(var key in userMap){
+             if(userMap[key]==userMap[username] && key!=username) {
+                 let p = document.createElement('p');
+                 p.innerHTML = key;
+                 document.getElementById("roomUsers").appendChild(p);
+              
+                 let btn = document.createElement('input');
+                 btn.type = "submit";
+                 btn.value = "Send Input as Private Message";
+                 document.getElementById("roomUsers").appendChild(btn);
+
+                 btn.addEventListener("click",function(event){
+                    let rec = p.innerHTML
+                     var msg = document.getElementById("message_input").value;
+                     socketio.emit("send_private", {recUn: rec, un:username, message: msg});
+                  });
+
+                  if(creator == username){
+                     let kickButton = document.createElement("input");
+                     kickButton.type = "submit";
+                     kickButton.value = "Kick User";
+                     let banButton = document.createElement("input");
+                     banButton.type = "submit";
+                     banButton.value = "Ban User";
+                     document.getElementById("roomUsers").appendChild(kickButton);
+                     document.getElementById("roomUsers").appendChild(banButton);
+                     banButton.addEventListener("click",function(event){
+                        let targetBan = key;
+                        socketio.emit("ban_user", targetBan, userMap[username], username);
+                     });
+                     kickButton.addEventListener("click",function(event){
+                        let targetKick = key;
+                        socketio.emit("kick_user", targetKick, userMap[username], username);
+                     });
+                  }
+               }
+            }
+      });
+
+       // function to send message to chat
+       socketio.on('send_message', function(data) {
+          var p = document.createElement('p');
+          var node = document.createTextNode(data.message);
+          p.appendChild(node);
+          document.getElementById("chat").appendChild(p);
+       });
+
+       // send specified user back to global room 
+       socketio.on('return_lobby', function(error){
+         alert(error);
+         socketio.emit("join_room", "global", username, null);
+       });
+       
+       socketio.on('get_password',function(roomTo, username){
+         var pw = prompt("Please enter room password");
+         socketio.emit('join_room', roomTo, username, pw);
+
+       });
+
+     // function to ask user for username, append random number if the same username is entered twice
+     socketio.on('duplicate_name', function(users) {
+         var newName = prompt("Please enter a name that does not already exist. Enter the same name again and we will generate a unique usrname for you!");
+         var old = newName;
+         while(newName.length==0 || users.includes(newName)) {
+             console.log("old", old);
+             console.log("newName", newName);
+             if(newName==old) {
+                 console.log("Here");
+                 while(users.includes(newName)) {
+                     newName += Math.round(Math.random() * 9);
+                     console.log("newName", newName);
+                 }
+             }
+             else {
+                 old = newName
+                 newName = prompt("Please enter a name that does not already exist. Enter the same name again and we will generate a unique usrname for you!");
+             }
+         }
+         username = newName;
+         console.log("emit with username=",username);
+         socketio.emit('add_user', username);
+     });
+    
+    socketio.on('room_name_error', function(roomName) {
+        alert("A room named '" + roomName + "' already exists!");
+    });
+ 
+       function sendMessage(){
+          var msg = document.getElementById("message_input").value;
+           // clean message here 
+           msg = cleanMessage(msg);
+          var room = document.getElementById("chatName").innerHTML;
+          socketio.emit("message_to_server", {message:msg, room:room, un:username});
+       }
+
+    function focus() {
+        console.log("focus");
+        var msg = "...";
+        var room = document.getElementById("chatName").innerHTML;
+        socketio.emit("message_to_server", {message:msg, room:room, un:username});
+    }
+
+    // clean out profanity from the users message
+    function cleanMessage(msg) {
+        var arr = msg.split(" "); 
+        for(let i=0; i<arr.length; i++) {
+            if(arr[i] in badWordMap) {
+                arr[i] = badWordMap[arr[i]];
+            }
+        }
+        let cleaned=""; 
+         for(let i=0; i<arr.length; i++) {
+           cleaned += " " + arr[i]; 
+         }
+        
+        return cleaned; 
+    }
+ 
+       document.onload = openPage();
+ 
+       function openPage(){
+          console.log("open page");
+          let nameForm = document.createElement("form");
+          document.getElementById("mainSection").appendChild(nameForm);
+          let nameBox = document.createElement("input");
+          nameBox.type = "text";
+          let nameSub = document.createElement("input");
+          nameSub.type = "submit";
+          nameSub.value = "Enter username";
+          nameForm.appendChild(nameBox);
+          nameForm.appendChild(nameSub);
+ 
+          nameSub.addEventListener("click", function(event){
+             event.preventDefault();
+             un = nameBox.value;
+             clear();
+             username = un;
+             socketio.emit("add_user", un);
+          });
+       }
+ 
+       function clear(){
+          let container = document.getElementById("mainSection");
+          while (container.firstChild){
+             container.removeChild(container.firstChild);
+          }
+       }
+
+       </script>
+       <style>
+          body{
+             margin-top:200px;
+             text-align: center;
+             background-color:#fefefe;
+             font-family: Arial, Helvetica, sans-serif;
+          }
+
+       </style>
+ </html>
